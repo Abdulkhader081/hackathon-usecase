@@ -1,0 +1,5 @@
+name: patient-service
+image:
+  repository: gcr.io/my-project/patient-service
+  tag: latest
+port: 3001
