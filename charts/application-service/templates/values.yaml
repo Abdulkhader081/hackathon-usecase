@@ -1,0 +1,5 @@
+name: appointment-service
+image:
+  repository: gcr.io/my-project/appointment-service
+  tag: latest
+port: 3002
