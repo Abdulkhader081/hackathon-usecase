@@ -1,0 +1,46 @@
+name: CI - Build & Push
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  id-token: write   # for OIDC
+
+env:
+  IMAGE: gcr.io/${{ secrets.GCP_PROJECT }}/order-service
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build Jar
+        run: mvn -B -DskipTests package
+
+      - name: Authenticate to GCR
+        uses: google-github-actions/auth@v1
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Configure docker for gcr
+        run: gcloud auth configure-docker
+
+      - name: Build and push image
+        run: |
+          docker build -t $IMAGE:${{ github.sha }} .
+          docker push $IMAGE:${{ github.sha }}
+
+      - name: Set image output
+        run: echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+
