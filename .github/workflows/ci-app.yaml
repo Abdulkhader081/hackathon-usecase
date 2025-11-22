@@ -1,46 +1,106 @@
-name: CI - Build & Push
+name: Terraform + Build & Push Microservices + Update Helm Tags
+
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ "main" ]
 
 permissions:
-  contents: read
-  id-token: write   # for OIDC
+  contents: write
+  id-token: write
 
 env:
-  IMAGE: gcr.io/${{ secrets.GCP_PROJECT }}/order-service
+  TF_WORKING_DIR: infra/dev
+  REGISTRY: gcr.io/${{ secrets.GCP_PROJECT_ID }}   # For GCP
+  # REGISTRY: ${{ secrets.ACR_NAME }}.azurecr.io   # For Azure ACR
 
 jobs:
-  build:
+  terraform:
+    name: Terraform Apply
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          terraform_version: 1.6.0
 
-      - name: Build Jar
-        run: mvn -B -DskipTests package
-
-      - name: Authenticate to GCR
-        uses: google-github-actions/auth@v1
+      # -------- GCP AUTH (OIDC) --------
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
 
-      - name: Configure docker for gcr
-        run: gcloud auth configure-docker
+      - name: Terraform Init
+        run: terraform -chdir=${TF_WORKING_DIR} init
 
-      - name: Build and push image
+      - name: Terraform FMT
+        run: terraform -chdir=${TF_WORKING_DIR} fmt -check
+
+      - name: Terraform Validate
+        run: terraform -chdir=${TF_WORKING_DIR} validate
+
+      - name: Terraform Plan
+        run: terraform -chdir=${TF_WORKING_DIR} plan -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform -chdir=${TF_WORKING_DIR} apply -auto-approve tfplan
+
+  build_push:
+    name: Build & Push Microservices + Update Helm
+    runs-on: ubuntu-latest
+    needs: terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -------- GCP AUTH (Docker login) --------
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Enable Docker login
+        run: gcloud auth configure-docker --quiet
+
+      # -------- LIST OF MICROSERVICES --------
+      - name: Define service names
         run: |
-          docker build -t $IMAGE:${{ github.sha }} .
-          docker push $IMAGE:${{ github.sha }}
+          echo "SERVICES=patient-service appointment-service order-service" >> $GITHUB_ENV
 
-      - name: Set image output
-        run: echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+      # -------- LOOP: BUILD, PUSH, UPDATE HELM --------
+      - name: Build, Push & Update Helm
+        run: |
+          for SERVICE in $SERVICES; do
+            echo "---- Processing $SERVICE ----"
 
+            IMAGE="$REGISTRY/$SERVICE:${GITHUB_SHA}"
+
+            echo "Building Docker image: $IMAGE"
+            docker build -t $IMAGE ./microservices/$SERVICE
+
+            echo "Pushing image: $IMAGE"
+            docker push $IMAGE
+
+            VALUES_FILE="charts/$SERVICE/values.yaml"
+
+            echo "Updating Helm chart file: $VALUES_FILE"
+
+            sed -i "s|repository:.*|repository: $REGISTRY/$SERVICE|g" $VALUES_FILE
+            sed -i "s|tag:.*|tag: \"${GITHUB_SHA}\"|g" $VALUES_FILE
+
+          done
+
+      # -------- COMMIT UPDATED HELM FILES --------
+      - name: Commit Helm tag updates
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add charts/*/values.yaml
+          git commit -m "Updated Docker tags for all microservices: $GITHUB_SHA" || echo "No changes"
+          git push
