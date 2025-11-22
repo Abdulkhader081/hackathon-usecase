@@ -1,5 +1,5 @@
-name: appointment-service
+name: application-service
 image:
-  repository: gcr.io/my-project/appointment-service
+  repository: gcr.io/my-project/application-service
   tag: latest
 port: 3002
