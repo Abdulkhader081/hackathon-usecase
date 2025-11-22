@@ -1,0 +1,6 @@
+replicaCount: 2
+image:
+  repository: gcr.io/my-project/order-service
+  tag: latest
+secrets:
+  name: order-service-secrets
