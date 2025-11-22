@@ -10,8 +10,7 @@ permissions:
 
 env:
   TF_WORKING_DIR: infra/dev
-  REGISTRY: gcr.io/${{ secrets.GCP_PROJECT_ID }}   # For GCP
-  # REGISTRY: ${{ secrets.ACR_NAME }}.azurecr.io   # For Azure ACR
+  REGISTRY: gcr.io/${{ secrets.GCP_PROJECT_ID }}
 
 jobs:
   terraform:
@@ -71,7 +70,7 @@ jobs:
       # -------- LIST OF MICROSERVICES --------
       - name: Define service names
         run: |
-          echo "SERVICES=patient-service appointment-service order-service" >> $GITHUB_ENV
+          echo "SERVICES=patient-service application-service order-service" >> $GITHUB_ENV
 
       # -------- LOOP: BUILD, PUSH, UPDATE HELM --------
       - name: Build, Push & Update Helm
