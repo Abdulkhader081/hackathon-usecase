@@ -1,0 +1,58 @@
+name: Terraform CI/CD
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+  push:
+    branches: [ main ]
+    paths:
+      - 'infra/**'
+
+jobs:
+  fmt-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+      - name: terraform fmt
+        run: terraform -chdir=infra/envs/dev fmt -check
+      - name: terraform validate
+        run: terraform -chdir=infra/envs/dev init -backend=false && terraform -chdir=infra/envs/dev validate
+
+  plan:
+    needs: fmt-validate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+      - name: Terraform init
+        run: terraform -chdir=infra/envs/dev init
+      - name: Terraform plan
+        run: terraform -chdir=infra/envs/dev plan -out=tfplan
+      - name: Upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: infra/envs/dev/tfplan
+
+  apply:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: plan
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+      - name: Terraform init
+        run: terraform -chdir=infra/envs/dev init
+      - name: Terraform apply
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZ_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZ_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.AZ_TENANT_ID }}
+        run: terraform -chdir=infra/envs/dev apply -auto-approve
