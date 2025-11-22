@@ -1,12 +1,8 @@
 name: Terraform CI/CD
 on:
-  pull_request:
-    paths:
-      - 'infra/**'
   push:
-    branches: [ main ]
-    paths:
-      - 'infra/**'
+    branches:
+      - "main"
 
 jobs:
   fmt-validate:
