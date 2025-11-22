@@ -2,7 +2,7 @@ name: CD - Deploy to GKE
 
 on:
   workflow_run:
-    workflows: ["ci-app"]
+    workflows: ["ci-app"]   # Trigger after your CI pipeline completes
     types: [completed]
 
 permissions:
@@ -17,36 +17,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- Authenticate to GCP ---
-      - name: Authenticate to GKE
-        uses: google-github-actions/auth@v1
+      # --- Authenticate to GCP using Workload Identity Federation ---
+      - name: Authenticate to GKE (OIDC)
+        uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
 
-      # --- Get GKE Credentials ---
+      # --- Get GKE kubeconfig ---
       - name: Fetch GKE Credentials
-        uses: google-github-actions/get-gke-credentials@v1
+        uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ secrets.GKE_CLUSTER_NAME }}
           location: ${{ secrets.GKE_LOCATION }}
           project_id: ${{ secrets.GCP_PROJECT }}
 
-      # --- Install Helm ---
+      # --- Install Helm (GCP-compatible, no Azure) ---
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: mikefarah/yq@master
+      - run: |
+          curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
 
-      # --- Deploy All 3 Microservices ---
-      - name: Deploy microservices with Helm
-        run: |
-          echo "🚀 Deploying patient-service..."
-          helm upgrade --install patient-service ./charts/patient-service \
-            --namespace patient --create-namespace
-
-          echo "🚀 Deploying appointment-service..."
-          helm upgrade --install appointment-service ./charts/appointment-service \
-            --namespace appointment --create-namespace
-
-          echo "🚀 Deploying order-service..."
-          helm upgrade --install order-service ./charts/order-service \
-            --namespace order --create-namespace
+      #
