@@ -1,0 +1,51 @@
+name: CD - Deploy to GKE
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- Authenticate to GCP ---
+      - name: Authenticate to GKE
+        uses: google-github-actions/auth@v1
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      # --- Get GKE Credentials ---
+      - name: Fetch GKE Credentials
+        uses: google-github-actions/get-gke-credentials@v1
+        with:
+          cluster_name: ${{ secrets.GKE_CLUSTER_NAME }}
+          location: ${{ secrets.GKE_LOCATION }}
+          project_id: ${{ secrets.GCP_PROJECT }}
+
+      # --- Install Helm ---
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+
+      # --- Deploy All 3 Microservices ---
+      - name: Deploy microservices with Helm
+        run: |
+          echo "🚀 Deploying patient-service..."
+          helm upgrade --install patient-service ./charts/patient-service \
+            --namespace patient --create-namespace
+
+          echo "🚀 Deploying appointment-service..."
+          helm upgrade --install appointment-service ./charts/appointment-service \
+            --namespace appointment --create-namespace
+
+          echo "🚀 Deploying order-service..."
+          helm upgrade --install order-service ./charts/order-service \
+            --namespace order --create-namespace
