@@ -1,4 +1,5 @@
 name: Terraform CI/CD
+
 on:
   push:
     branches:
@@ -9,13 +10,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: 1.5.0
-      - name: terraform fmt
+
+      - name: Terraform fmt
         run: terraform -chdir=infra/envs/dev fmt -check
-      - name: terraform validate
+
+      - name: Terraform validate
         run: terraform -chdir=infra/envs/dev init -backend=false && terraform -chdir=infra/envs/dev validate
 
   plan:
@@ -24,12 +28,27 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_TERRAFORM_SA }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
       - name: Terraform init
-        run: terraform -chdir=infra/envs/dev init
+        run: terraform -chdir=infra/envs/dev init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="prefix=dev"
+
       - name: Terraform plan
         run: terraform -chdir=infra/envs/dev plan -out=tfplan
+
       - name: Upload plan
         uses: actions/upload-artifact@v4
         with:
@@ -42,13 +61,23 @@ jobs:
     needs: plan
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_TERRAFORM_SA }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
       - name: Terraform init
-        run: terraform -chdir=infra/envs/dev init
+        run: terraform -chdir=infra/envs/dev init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="prefix=dev"
+
       - name: Terraform apply
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZ_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZ_CLIENT_SECRET }}
-          ARM_TENANT_ID: ${{ secrets.AZ_TENANT_ID }}
-        run: terraform -chdir=infra/envs/dev apply -auto-approve
+        run: terraform -chdir=infra/envs/dev apply -auto-approve tfplan
