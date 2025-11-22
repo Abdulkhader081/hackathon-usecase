@@ -58,7 +58,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # -------- GCP AUTH (Docker login) --------
+      # -------- GCP AUTH FOR DOCKER PUSH --------
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
@@ -89,8 +89,7 @@ jobs:
 
             VALUES_FILE="charts/$SERVICE/values.yaml"
 
-            echo "Updating Helm chart file: $VALUES_FILE"
-
+            echo "Updating Helm chart: $VALUES_FILE"
             sed -i "s|repository:.*|repository: $REGISTRY/$SERVICE|g" $VALUES_FILE
             sed -i "s|tag:.*|tag: \"${GITHUB_SHA}\"|g" $VALUES_FILE
 
@@ -102,5 +101,5 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add charts/*/values.yaml
-          git commit -m "Updated Docker tags for all microservices: $GITHUB_SHA" || echo "No changes"
+          git commit -m "Updated microservice image tags to ${GITHUB_SHA}" || echo "No changes to commit"
           git push
